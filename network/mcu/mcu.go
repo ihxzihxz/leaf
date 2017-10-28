@@ -1,4 +1,4 @@
-package json
+package mcu
 
 import (
 	"encoding/json"
@@ -8,7 +8,11 @@ import (
 	"github.com/ihxzihxz/leaf/log"
 	"reflect"
 )
+/*
+本插件由ihxzihxz 38612744@qq.com开发,用于对mcu单片机上通过wifi 4g NBIot上传的数据来进行处理
+本插件主要为16进制协议解析并绑定路由提供支持
 
+*/
 type Processor struct {
 	msgInfo map[string]*MsgInfo
 }
