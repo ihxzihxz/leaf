@@ -1,34 +1,36 @@
 package mcu
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/ihxzihxz/leaf/chanrpc"
 	"github.com/ihxzihxz/leaf/log"
 	"reflect"
 )
+
 /*
 本插件由ihxzihxz 38612744@qq.com开发,用于对mcu单片机上通过wifi 4g NBIot上传的数据来进行处理
 本插件主要为16进制协议解析并绑定路由提供支持
 
 */
+const MAXLENGTH int = 20
+
 type Processor struct {
 	msgInfo map[string]*MsgInfo
 }
 
 type MsgInfo struct {
-	msgType       reflect.Type
+	msgType       reflect.Type //struct类型
 	msgRouter     *chanrpc.Server
 	msgHandler    MsgHandler
 	msgRawHandler MsgHandler
+	msgProtocol   [][]byte
 }
 
 type MsgHandler func([]interface{})
 
 type MsgRaw struct {
 	msgID      string
-	msgRawData json.RawMessage
+	msgRawData []byte
 }
 
 func NewProcessor() *Processor {
@@ -38,14 +40,14 @@ func NewProcessor() *Processor {
 }
 
 // It's dangerous to call the method on routing or marshaling (unmarshaling)
-func (p *Processor) Register(msg interface{}) string {
+func (p *Processor) Register(msg interface{}, protocol [][]byte) string {
 	msgType := reflect.TypeOf(msg)
 	if msgType == nil || msgType.Kind() != reflect.Ptr {
-		log.Fatal("json message pointer required")
+		log.Fatal("mcu message pointer required")
 	}
 	msgID := msgType.Elem().Name()
 	if msgID == "" {
-		log.Fatal("unnamed json message")
+		log.Fatal("unnamed mcu message")
 	}
 	if _, ok := p.msgInfo[msgID]; ok {
 		log.Fatal("message %v is already registered", msgID)
@@ -53,6 +55,7 @@ func (p *Processor) Register(msg interface{}) string {
 
 	i := new(MsgInfo)
 	i.msgType = msgType
+	i.msgProtocol = protocol //带入协议供router检验用
 	p.msgInfo[msgID] = i
 	return msgID
 }
@@ -61,117 +64,67 @@ func (p *Processor) Register(msg interface{}) string {
 func (p *Processor) SetRouter(msg interface{}, msgRouter *chanrpc.Server) {
 	msgType := reflect.TypeOf(msg)
 	if msgType == nil || msgType.Kind() != reflect.Ptr {
-		log.Fatal("json message pointer required")
+		log.Fatal("mcu message pointer required")
 	}
 	msgID := msgType.Elem().Name()
 	i, ok := p.msgInfo[msgID]
 	if !ok {
-		log.Fatal("message %v not registered", msgID)
+		log.Fatal("mcu %v not registered", msgID)
 	}
 
 	i.msgRouter = msgRouter
 }
 
-// It's dangerous to call the method on routing or marshaling (unmarshaling)
-func (p *Processor) SetHandler(msg interface{}, msgHandler MsgHandler) {
-	msgType := reflect.TypeOf(msg)
-	if msgType == nil || msgType.Kind() != reflect.Ptr {
-		log.Fatal("json message pointer required")
-	}
-	msgID := msgType.Elem().Name()
-	i, ok := p.msgInfo[msgID]
-	if !ok {
-		log.Fatal("message %v not registered", msgID)
-	}
-
-	i.msgHandler = msgHandler
-}
-
-// It's dangerous to call the method on routing or marshaling (unmarshaling)
-func (p *Processor) SetRawHandler(msgID string, msgRawHandler MsgHandler) {
-	i, ok := p.msgInfo[msgID]
-	if !ok {
-		log.Fatal("message %v not registered", msgID)
-	}
-
-	i.msgRawHandler = msgRawHandler
-}
-
 // goroutine safe
 func (p *Processor) Route(msg interface{}, userData interface{}) error {
-	// raw
-	if msgRaw, ok := msg.(MsgRaw); ok {
-		i, ok := p.msgInfo[msgRaw.msgID]
-		if !ok {
-			return fmt.Errorf("message %v not registered", msgRaw.msgID)
-		}
-		if i.msgRawHandler != nil {
-			i.msgRawHandler([]interface{}{msgRaw.msgID, msgRaw.msgRawData, userData})
-		}
-		return nil
+	//msg 结构体内容
+	//msg不再是结构体而是[]byte类型
+	//userData goroutine agent
+	value, ok := msg.([]byte)
+	if !ok {
+		return errors.New("mcu input data type error or empty!")
 	}
 
-	// json
-	msgType := reflect.TypeOf(msg)
-	if msgType == nil || msgType.Kind() != reflect.Ptr {
-		return errors.New("json message pointer required")
-	}
-	msgID := msgType.Elem().Name()
-	i, ok := p.msgInfo[msgID]
-	if !ok {
-		return fmt.Errorf("message %v not registered", msgID)
-	}
-	if i.msgHandler != nil {
-		i.msgHandler([]interface{}{msg, userData})
-	}
-	if i.msgRouter != nil {
-		i.msgRouter.Go(msgType, msg, userData)
+	for _, data := range p.msgInfo {
+		for k := 0; k < len(data.msgProtocol); k++ {
+			i := 0
+			for ; i < len(data.msgProtocol[k]); i++ {
+				if value[i] == 0 {
+					continue
+				}
+				if value[i] != data.msgProtocol[k][i] {
+					continue
+				}
+			}
+			//协议mask符合
+			if i >= len(value) {
+				if data.msgRouter != nil {
+					data.msgRouter.Go(data.msgType, msg, userData)
+				}
+			}
+		}
 	}
 	return nil
 }
 
+/*
+中间原始数据不作转换
+*/
 // goroutine safe
 func (p *Processor) Unmarshal(data []byte) (interface{}, error) {
-	var m map[string]json.RawMessage
-	err := json.Unmarshal(data, &m)
-	if err != nil {
-		return nil, err
-	}
-	if len(m) != 1 {
-		return nil, errors.New("invalid json data")
-	}
-
-	for msgID, data := range m {
-		i, ok := p.msgInfo[msgID]
-		if !ok {
-			return nil, fmt.Errorf("message %v not registered", msgID)
-		}
-
-		// msg
-		if i.msgRawHandler != nil {
-			return MsgRaw{msgID, data}, nil
-		} else {
-			msg := reflect.New(i.msgType.Elem()).Interface()
-			return msg, json.Unmarshal(data, msg)
-		}
-	}
-
-	panic("bug")
+	return data, nil
 }
 
+/*
+中间原始数据不作转换
+*/
 // goroutine safe
 func (p *Processor) Marshal(msg interface{}) ([][]byte, error) {
-	msgType := reflect.TypeOf(msg)
-	if msgType == nil || msgType.Kind() != reflect.Ptr {
-		return nil, errors.New("json message pointer required")
-	}
-	msgID := msgType.Elem().Name()
-	if _, ok := p.msgInfo[msgID]; !ok {
-		return nil, fmt.Errorf("message %v not registered", msgID)
+
+	if value, ok := msg.([]byte); ok {
+		return [][]byte{value}, nil
+	} else {
+		return nil, errors.New("mcu input data type error or empty!")
 	}
 
-	// data
-	m := map[string]interface{}{msgID: msg}
-	data, err := json.Marshal(m)
-	return [][]byte{data}, err
 }

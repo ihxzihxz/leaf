@@ -148,6 +148,7 @@ func (p *Processor) Unmarshal(data []byte) (interface{}, error) {
 			return MsgRaw{msgID, data}, nil
 		} else {
 			msg := reflect.New(i.msgType.Elem()).Interface()
+
 			return msg, json.Unmarshal(data, msg)
 		}
 	}
