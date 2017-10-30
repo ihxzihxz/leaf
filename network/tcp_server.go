@@ -54,7 +54,7 @@ func (server *TCPServer) init() {
 
 	// msg parser
 	msgParser := NewMCUMsgParser()
-	msgParser.SetMsgLen(1,server.LenMsgLen, server.MinMsgLen, server.MaxMsgLen)
+	msgParser.SetMsgLen(0,1, server.MinMsgLen, server.MaxMsgLen)
 	msgParser.SetByteOrder(server.LittleEndian)
 	server.msgParser = msgParser
 }

@@ -24,7 +24,7 @@ type TCPClient struct {
 	MinMsgLen    uint32
 	MaxMsgLen    uint32
 	LittleEndian bool
-	msgParser    *MsgParser
+	msgParser    *MCUMsgParser
 }
 
 func (client *TCPClient) Start() {
@@ -63,8 +63,9 @@ func (client *TCPClient) init() {
 	client.closeFlag = false
 
 	// msg parser
-	msgParser := NewMsgParser()
-	msgParser.SetMsgLen(client.LenMsgLen, client.MinMsgLen, client.MaxMsgLen)
+	msgParser := NewMCUMsgParser()
+	//todo:
+	msgParser.SetMsgLen(1,client.LenMsgLen, client.MinMsgLen, client.MaxMsgLen)
 	msgParser.SetByteOrder(client.LittleEndian)
 	client.msgParser = msgParser
 }

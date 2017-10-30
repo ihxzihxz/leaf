@@ -76,7 +76,7 @@ p.lenSeek 长度数据的位移
 */
 // goroutine safe
 func (p *MCUMsgParser) Read(conn *TCPConn) ([]byte, error) {
-	var b [p.lenSeek+4]byte
+	var b [10+4]byte
 	bufMsgLen := b[:p.lenMsgLen+p.lenSeek]
 
 	// read len

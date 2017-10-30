@@ -87,8 +87,15 @@ func (p *Processor) Route(msg interface{}, userData interface{}) error {
 	for _, data := range p.msgInfo {//所有路由
 		for k := 0; k < len(data.msgProtocol); k++ {//每个路由可以有多条mask
 			i := 0
-			for ; i < len(data.msgProtocol[k]); i++ {//每个字节对比
-				if value[i] == 0 {
+			dmin:=0
+			if len(value) > len(data.msgProtocol[k]){
+				dmin = len(data.msgProtocol[k])
+			}else{
+				dmin =len(value)
+			}
+
+			for ; i < dmin; i++ {//每个字节对比
+				if data.msgProtocol[k][i] == 0 {
 					continue
 				}
 				if value[i] != data.msgProtocol[k][i] {
@@ -98,7 +105,11 @@ func (p *Processor) Route(msg interface{}, userData interface{}) error {
 			//协议mask符合
 			if i >= len(value) {
 				if data.msgRouter != nil {
-					data.msgRouter.Go(data.msgType, msg, userData)//异步调用
+					msgbuild := reflect.New(data.msgType.Elem())
+					sliceValue := reflect.ValueOf(msg)
+					msgbuild.FieldByName("data").Set(sliceValue)
+					data.msgRouter.Go(data.msgType, msgbuild, userData)//异步调用
+					log.Debug("Route:%v==%v", data.msgType.Elem().Name(),msg)
 				}
 			}
 		}
