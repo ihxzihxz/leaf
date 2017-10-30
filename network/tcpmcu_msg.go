@@ -25,7 +25,7 @@ type MCUMsgParser struct {
 func NewMCUMsgParser() *MCUMsgParser {
 	p := new(MCUMsgParser)
 	p.lenMsgLen = 2
-	p.lenSeek = 0
+	p.lenSeek = 0	//长度字节所在位置位移
 	p.minMsgLen = 1
 	p.maxMsgLen = 4096
 	p.littleEndian = false
@@ -121,6 +121,8 @@ func (p *MCUMsgParser) Read(conn *TCPConn) ([]byte, error) {
 }
 
 // goroutine safe
+//写数据不做处理,直接写(不加入长度数据,长度数据由协议本身提供)
+//TODO:此处可以优化
 func (p *MCUMsgParser) Write(conn *TCPConn, args ...[]byte) error {
 	// get len
 	var msgLen uint32
